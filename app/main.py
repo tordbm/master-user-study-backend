@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import random
 import pandas as pd
+from app.models import Base
+from app.database import engine
 
 from app.schemas import Article, Categories
 
@@ -18,6 +20,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def on_startup():
+
+    async with engine.begin() as conn:
+        
+        await conn.run_sync(Base.metadata.drop_all)
+
+        await conn.run_sync(Base.metadata.create_all)
 
 @app.post("/articles", response_model=List[Article])
 def fetch_sports_articles(categories: Categories):
