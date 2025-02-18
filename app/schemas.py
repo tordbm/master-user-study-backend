@@ -12,3 +12,15 @@ class Article(BaseModel):
     general_category: str
     title: str
     abstract: str
+
+
+class RecommendedArticle(BaseModel):
+    recommender: str
+    news_id: str
+    general_category: str
+    title: str
+    abstract: str
+
+
+class UserLikes(BaseModel):
+    likes: List[str]

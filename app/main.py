@@ -1,8 +1,11 @@
 import random
 from typing import List
 
+import numpy as np
+import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -17,6 +20,9 @@ app = FastAPI()
 origins = [
     "http://localhost:5173",
 ]
+
+recommenders = ["tf-idf", "S-BERT"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -26,11 +32,37 @@ app.add_middleware(
 )
 
 
+async def load_csv_to_db():
+    df = pd.read_csv("small_sports_articles.csv")
+
+    async with engine.begin() as conn:
+        sql = text(
+            "INSERT INTO news_articles (news_id, title, general_category, abstract, tf_idf, s_bert) VALUES (:news_id, :title, :general_category, :abstract, :tfidf_vector, :sbert_vector)"
+        )
+        data = df.to_dict(orient="records")
+        await conn.execute(sql, data)
+
+    df = None
+
+
 @app.on_event("startup")
 async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                "create index tf_idf_hnsw_idx on news_articles using hnsw (tf_idf vector_cosine_ops);"
+            )
+        )
+        await conn.execute(
+            text(
+                "create index s_bert_hnsw_idx on news_articles using hnsw (s_bert vector_cosine_ops);"
+            )
+        )
+
+    await load_csv_to_db()
 
 
 @app.post("/articles", response_model=List[Article])
@@ -60,4 +92,18 @@ async def fetch_sports_articles(
             random.sample(category_articles, min(3, len(category_articles)))
         )
 
-    return [Article(**article.__dict__) for article in sampled_articles]
+    shuffled_articles = [Article(**article.__dict__) for article in sampled_articles]
+    random.shuffle(shuffled_articles)
+
+    return shuffled_articles
+
+
+@app.get("/recommend")
+async def make_recommendations(db: AsyncSession = Depends(get_db)):
+    vector = np.random.rand(10).tolist()
+    query = text("""
+    select news_id from news_articles order by tf_idf <=> :query_vector limit 5;
+    """)
+    result = await db.execute(query, {"query_vector": vector})
+    similar = result.fetchall()
+    return similar

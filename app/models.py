@@ -1,3 +1,4 @@
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
 
@@ -16,3 +17,5 @@ class NewsArticles(Base):
     title = Column(String)
     general_category = Column(String)
     abstract = Column(String)
+    tf_idf = Column(Vector(10), nullable=False)
+    s_bert = Column(Vector(10), nullable=False)
