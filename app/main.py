@@ -11,29 +11,28 @@ from sqlalchemy.future import select
 
 from app.database import engine
 from app.models import Base, NewsArticles
-from app.schemas import Article, Categories
+from app.schemas import Article, Categories, RecommendedArticle
 
 from .database import get_db
 
 app = FastAPI()
 
 origins = [
+    "*",
     "http://localhost:5173",
 ]
-
-recommenders = ["tf-idf", "S-BERT"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 
 async def load_csv_to_db():
-    df = pd.read_csv("small_sports_articles.csv")
+    df = pd.read_csv("./data/small_sports_articles.csv")
 
     async with engine.begin() as conn:
         sql = text(
@@ -98,12 +97,36 @@ async def fetch_sports_articles(
     return shuffled_articles
 
 
-@app.get("/recommend")
+@app.get("/recommend", response_model=List[RecommendedArticle])
 async def make_recommendations(db: AsyncSession = Depends(get_db)):
-    vector = np.random.rand(10).tolist()
-    query = text("""
-    select news_id from news_articles order by tf_idf <=> :query_vector limit 5;
-    """)
-    result = await db.execute(query, {"query_vector": vector})
-    similar = result.fetchall()
-    return similar
+    options = ["tf_idf", "s_bert"]
+
+    rand_vector = np.random.rand(10).tolist()
+    vector = "[" + ",".join(map(str, rand_vector)) + "]"
+
+    articles = []
+    for i in range(len(options)):
+        query = text(f"""
+            select news_id,
+            title, 
+            general_category, 
+            abstract 
+            from news_articles 
+            order by {options[i]} <=> :query_vector 
+            limit 5;
+            """)
+        result = await db.execute(query, {"query_vector": vector})
+        similar = result.fetchall()
+        articles.extend(
+            [
+                RecommendedArticle(
+                    recommender=options[i],
+                    news_id=row.news_id,
+                    general_category=row.general_category,
+                    title=row.title,
+                    abstract=row.abstract,
+                )
+                for row in similar
+            ]
+        )
+    return articles

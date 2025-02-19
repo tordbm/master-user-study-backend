@@ -1,9 +1,14 @@
 import os
 
 from dotenv import load_dotenv
+from sqlalchemy import URL
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql+asyncpg://user:password@db/recommender_db"
+DATABASE_URL = URL.create(
+    "postgresql+asyncpg",
+    username=os.getenv("DATABASE_USER"),
+    password=os.getenv("DATABASE_PASSWORD"),
+    host=os.getenv("DATABASE_HOST"),
+    database=os.getenv("DATABASE_NAME"),
 )

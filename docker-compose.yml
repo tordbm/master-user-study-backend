@@ -1,31 +1,13 @@
 services:
-  db:
-    image: ankane/pgvector
-    container_name: postgres_db
-    restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: recommender_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
   app:
     build: .
     container_name: fastapi_app
     restart: always
-    depends_on:
-      - db
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db/recommender_db
+      ENVIRONMENT: ${ENVIRONMENT}
     ports:
       - "8000:8000"
     volumes:
       - .:/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["/bin/sh", "-c", "if [ '$$ENVIRONMENT' = 'production' ]; then uvicorn app.main:app --host 0.0.0.0 --port 8000; else uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload; fi"]
     working_dir: /app
-
-volumes:
-  postgres_data:
