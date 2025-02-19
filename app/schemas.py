@@ -23,4 +23,4 @@ class RecommendedArticle(BaseModel):
 
 
 class UserLikes(BaseModel):
-    likes: List[str]
+    news_ids: List[str]

@@ -1,3 +1,4 @@
+import json
 import random
 from typing import List
 
@@ -10,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.database import engine
+from app.enums import Recommenders
 from app.models import Base, NewsArticles
-from app.schemas import Article, Categories, RecommendedArticle
+from app.schemas import Article, Categories, RecommendedArticle, UserLikes
 
 from .database import get_db
 
@@ -31,6 +33,10 @@ app.add_middleware(
 )
 
 
+def vector_to_string(vector) -> str:
+    return "[" + ",".join(map(str, vector)) + "]"
+
+
 async def load_csv_to_db():
     df = pd.read_csv("./data/small_sports_articles.csv")
 
@@ -42,6 +48,28 @@ async def load_csv_to_db():
         await conn.execute(sql, data)
 
     df = None
+
+
+async def compute_user_profile(
+    news_ids: List[str], embedding_model: Recommenders, db: AsyncSession
+):
+    query = text(f"""
+            select {embedding_model.value}
+            from news_articles
+            where news_id = ANY(:news_ids)
+        """)
+    result = await db.execute(query, {"news_ids": news_ids})
+    embeddings = [row[0] for row in result.fetchall()]
+
+    embeddings_numpy = [
+        np.array(json.loads(embedding), dtype=np.float32)
+        if isinstance(embedding, str)
+        else np.array(embedding, dtype=np.float32)
+        for embedding in embeddings
+        if embedding
+    ]
+    user_profile = np.mean(embeddings_numpy, axis=0)
+    return vector_to_string(user_profile)
 
 
 @app.on_event("startup")
@@ -97,30 +125,34 @@ async def fetch_sports_articles(
     return shuffled_articles
 
 
-@app.get("/recommend", response_model=List[RecommendedArticle])
-async def make_recommendations(db: AsyncSession = Depends(get_db)):
-    options = ["tf_idf", "s_bert"]
-
-    rand_vector = np.random.rand(10).tolist()
-    vector = "[" + ",".join(map(str, rand_vector)) + "]"
-
+@app.post("/recommend", response_model=List[RecommendedArticle])
+async def make_recommendations(
+    user_likes: UserLikes, db: AsyncSession = Depends(get_db)
+):
+    rand_rec = random.sample(list(Recommenders), 2)
     articles = []
-    for i in range(len(options)):
+    for rec in rand_rec:
+        user_profile = await compute_user_profile(user_likes.news_ids, rec, db)
         query = text(f"""
-            select news_id,
+            select 
+            news_id,
             title, 
             general_category, 
             abstract 
             from news_articles 
-            order by {options[i]} <=> :query_vector 
+            where news_id != ALL(:clicked_ids)
+            order by {rec.value} <=> :query_vector
             limit 5;
             """)
-        result = await db.execute(query, {"query_vector": vector})
+        result = await db.execute(
+            query,
+            {"clicked_ids": tuple(user_likes.news_ids), "query_vector": user_profile},
+        )
         similar = result.fetchall()
         articles.extend(
             [
                 RecommendedArticle(
-                    recommender=options[i],
+                    recommender=rec.value,
                     news_id=row.news_id,
                     general_category=row.general_category,
                     title=row.title,
@@ -129,4 +161,5 @@ async def make_recommendations(db: AsyncSession = Depends(get_db)):
                 for row in similar
             ]
         )
+    random.shuffle(articles)
     return articles
