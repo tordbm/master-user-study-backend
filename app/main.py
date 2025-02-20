@@ -12,6 +12,7 @@ from sqlalchemy.future import select
 
 from app.database import engine
 from app.enums import Recommenders
+from app.middleware import RetryMiddleware
 from app.models import Base, NewsArticles
 from app.schemas import Article, Categories, RecommendedArticle, UserLikes
 
@@ -32,6 +33,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(RetryMiddleware)
+
 
 def vector_to_string(vector) -> str:
     return "[" + ",".join(map(str, vector)) + "]"
@@ -42,12 +45,12 @@ async def load_csv_to_db():
 
     async with engine.begin() as conn:
         sql = text(
-            "INSERT INTO news_articles (news_id, title, general_category, abstract, tf_idf, s_bert) VALUES (:news_id, :title, :general_category, :abstract, :tfidf_vector, :sbert_vector)"
+            "insert into news_articles (news_id, title, general_category, abstract, tf_idf, s_bert) values (:news_id, :title, :general_category, :abstract, :tfidf_vector, :sbert_vector)"
         )
         data = df.to_dict(orient="records")
         await conn.execute(sql, data)
 
-    df = None
+    del df
 
 
 async def compute_user_profile(
@@ -75,17 +78,21 @@ async def compute_user_profile(
 @app.on_event("startup")
 async def on_startup():
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.tables["news_articles"].drop(
+                bind=sync_conn, checkfirst=True
+            )
+        )
+        await conn.execute(text("create extension if not exists vector;"))
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
             text(
-                "create index tf_idf_hnsw_idx on news_articles using hnsw (tf_idf vector_cosine_ops);"
+                "create index if not exists tf_idf_hnsw_idx on news_articles using hnsw (tf_idf vector_cosine_ops);"
             )
         )
         await conn.execute(
             text(
-                "create index s_bert_hnsw_idx on news_articles using hnsw (s_bert vector_cosine_ops);"
+                "create index if not exists s_bert_hnsw_idx on news_articles using hnsw (s_bert vector_cosine_ops);"
             )
         )
 
@@ -140,7 +147,7 @@ async def make_recommendations(
             general_category, 
             abstract 
             from news_articles 
-            where news_id != ALL(:clicked_ids)
+            where news_id != all(:clicked_ids)
             order by {rec.value} <=> :query_vector
             limit 5;
             """)
