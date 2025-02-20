@@ -168,5 +168,4 @@ async def make_recommendations(
                 for row in similar
             ]
         )
-    random.shuffle(articles)
     return articles
