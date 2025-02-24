@@ -12,7 +12,6 @@ from sqlalchemy.future import select
 
 from app.database import engine
 from app.enums import Recommenders
-from app.middleware import RetryMiddleware
 from app.models import Base, NewsArticles
 from app.schemas import Article, Categories, RecommendedArticle, UserLikes
 
@@ -32,8 +31,6 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-
-app.add_middleware(RetryMiddleware)
 
 
 def vector_to_string(vector) -> str:
