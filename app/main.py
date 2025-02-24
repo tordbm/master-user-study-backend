@@ -21,7 +21,7 @@ from .database import get_db
 app = FastAPI()
 
 origins = [
-    "*",
+    "https://master-user-study.vercel.app/",
     "http://localhost:5173",
 ]
 
@@ -37,7 +37,7 @@ app.add_middleware(RetryMiddleware)
 
 
 def vector_to_string(vector) -> str:
-    return "[" + ",".join(map(str, vector)) + "]"
+    return "[" + ",".join(np.char.mod("%f", vector)) + "]"
 
 
 async def load_csv_to_db():
@@ -71,6 +71,12 @@ async def compute_user_profile(
         for embedding in embeddings
         if embedding
     ]
+
+    if not embeddings_numpy:
+        raise HTTPException(
+            status_code=400, detail="No embeddings found for user profile"
+        )
+
     user_profile = np.mean(embeddings_numpy, axis=0)
     return vector_to_string(user_profile)
 
@@ -109,69 +115,90 @@ async def on_startup():
 async def fetch_sports_articles(
     categories: Categories, db: AsyncSession = Depends(get_db)
 ):
-    query = select(NewsArticles).filter(
-        NewsArticles.general_category.in_(categories.sports)
-    )
-    result = await db.execute(query)
-    articles = result.scalars().all()
-
-    if not articles:
-        raise HTTPException(
-            status_code=404, detail="No articles found for the given categories"
+    try:
+        query = select(NewsArticles).filter(
+            NewsArticles.general_category.in_(categories.sports)
         )
+        result = await db.execute(query)
+        articles = result.scalars().all()
 
-    elif len(articles) < 9:
-        raise HTTPException(status_code=404, detail="Not enough articles in dataset")
+        if not articles:
+            raise HTTPException(
+                status_code=404, detail="No articles found for the given categories"
+            )
 
-    sampled_articles = []
-    for category in categories.sports:
-        category_articles = [
-            article for article in articles if article.general_category == category
+        if len(articles) < 9:
+            raise HTTPException(
+                status_code=404, detail="Not enough articles in dataset"
+            )
+
+        sampled_articles = []
+        for category in categories.sports:
+            category_articles = [
+                article for article in articles if article.general_category == category
+            ]
+            sampled_articles.extend(
+                random.sample(category_articles, min(3, len(category_articles)))
+            )
+
+        shuffled_articles = [
+            Article(**article.__dict__) for article in sampled_articles
         ]
-        sampled_articles.extend(
-            random.sample(category_articles, min(3, len(category_articles)))
+        random.shuffle(shuffled_articles)
+
+        return shuffled_articles
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching articles: {str(e)}"
         )
-
-    shuffled_articles = [Article(**article.__dict__) for article in sampled_articles]
-    random.shuffle(shuffled_articles)
-
-    return shuffled_articles
 
 
 @app.post("/recommend", response_model=List[RecommendedArticle])
 async def make_recommendations(
     user_likes: UserLikes, db: AsyncSession = Depends(get_db)
 ):
-    rand_rec = random.sample(list(Recommenders), 2)
-    articles = []
-    for rec in rand_rec:
-        user_profile = await compute_user_profile(user_likes.news_ids, rec, db)
-        query = text(f"""
-            select 
-            news_id,
-            title, 
-            general_category, 
-            abstract 
-            from news_articles 
-            where news_id != all(:clicked_ids)
-            order by {rec.value} <=> :query_vector
-            limit 5;
+    try:
+        rand_rec = random.sample(list(Recommenders), 2)
+        articles = []
+        for rec in rand_rec:
+            user_profile = await compute_user_profile(user_likes.news_ids, rec, db)
+
+            query = text(f"""
+                select 
+                news_id,
+                title, 
+                general_category, 
+                abstract 
+                from news_articles 
+                where news_id != all(:clicked_ids)
+                order by {rec.value} <=> :query_vector
+                limit 5;
             """)
-        result = await db.execute(
-            query,
-            {"clicked_ids": tuple(user_likes.news_ids), "query_vector": user_profile},
+            result = await db.execute(
+                query,
+                {
+                    "clicked_ids": tuple(user_likes.news_ids),
+                    "query_vector": user_profile,
+                },
+            )
+            similar = result.fetchall()
+
+            articles.extend(
+                [
+                    RecommendedArticle(
+                        recommender=rec.value,
+                        news_id=row.news_id,
+                        general_category=row.general_category,
+                        title=row.title,
+                        abstract=row.abstract,
+                    )
+                    for row in similar
+                ]
+            )
+        return articles
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error making recommendations: {str(e)}"
         )
-        similar = result.fetchall()
-        articles.extend(
-            [
-                RecommendedArticle(
-                    recommender=rec.value,
-                    news_id=row.news_id,
-                    general_category=row.general_category,
-                    title=row.title,
-                    abstract=row.abstract,
-                )
-                for row in similar
-            ]
-        )
-    return articles
