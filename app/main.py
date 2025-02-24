@@ -21,7 +21,7 @@ from .database import get_db
 app = FastAPI()
 
 origins = [
-    "https://master-user-study.vercel.app/",
+    "https://master-user-study.vercel.app",
     "http://localhost:5173",
 ]
 
