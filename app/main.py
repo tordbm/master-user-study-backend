@@ -41,7 +41,7 @@ def vector_to_string(vector) -> str:
 
 
 async def load_csv_to_db():
-    df = pd.read_csv("./data/small_sports_articles.csv")
+    df = pd.read_csv("./data/balanced_small_articles.csv")
 
     async with engine.begin() as conn:
         sql = text(
