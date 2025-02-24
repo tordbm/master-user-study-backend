@@ -120,7 +120,7 @@ async def fetch_sports_articles(
             status_code=404, detail="No articles found for the given categories"
         )
 
-    elif len(articles) < 6:
+    elif len(articles) < 9:
         raise HTTPException(status_code=404, detail="Not enough articles in dataset")
 
     sampled_articles = []
