@@ -45,7 +45,7 @@ async def load_csv_to_db():
 
     async with engine.begin() as conn:
         sql = text(
-            "insert into news_articles (news_id, title, general_category, abstract, tf_idf, s_bert) values (:news_id, :title, :general_category, :abstract, :tfidf_vector, :sbert_vector)"
+            "insert into news_articles (news_id, title, general_category, abstract, tf_idf, s_bert, open_ai) values (:news_id, :title, :general_category, :abstract, :tfidf_vector, :sbert_vector, :openai_vector)"
         )
         data = df.to_dict(orient="records")
         await conn.execute(sql, data)
@@ -93,6 +93,12 @@ async def on_startup():
         await conn.execute(
             text(
                 "create index if not exists s_bert_hnsw_idx on news_articles using hnsw (s_bert vector_cosine_ops);"
+            )
+        )
+
+        await conn.execute(
+            text(
+                "create index if not exists open_ai_hnsw_idx on news_articles using hnsw (open_ai vector_cosine_ops);"
             )
         )
 

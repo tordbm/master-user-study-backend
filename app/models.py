@@ -19,3 +19,4 @@ class NewsArticles(Base):
     abstract = Column(String)
     tf_idf = Column(Vector(10), nullable=False)
     s_bert = Column(Vector(10), nullable=False)
+    open_ai = Column(Vector(10), nullable=False)
