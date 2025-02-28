@@ -1,6 +1,8 @@
 import json
 import random
+from datetime import datetime
 from typing import List
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -12,8 +14,16 @@ from sqlalchemy.future import select
 
 from app.database import engine
 from app.enums import Recommenders
-from app.models import Base, NewsArticles
-from app.schemas import Article, Categories, RecommendedArticle, UserLikes
+from app.models import Base, NewsArticles, StudyResponseModel
+from app.schemas import (
+    Article,
+    Categories,
+    RecommendedArticle,
+    StudyResponse,
+    UserLikes,
+    UserStudy,
+    UserStudyResponse,
+)
 
 from .database import get_db
 
@@ -82,7 +92,7 @@ async def compute_user_profile(
 async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(
-            lambda sync_conn: Base.metadata.tables["news_articles"].drop(
+            lambda sync_conn: Base.metadata.tables["study_response"].drop(
                 bind=sync_conn, checkfirst=True
             )
         )
@@ -104,8 +114,13 @@ async def on_startup():
                 "create index if not exists open_ai_hnsw_idx on news_articles using hnsw (open_ai vector_cosine_ops);"
             )
         )
+        result = await conn.execute(text("select exists (select 1 from news_articles)"))
+        has_entries = result.scalar()
 
-    await load_csv_to_db()
+    if not has_entries:
+        await load_csv_to_db()
+    else:
+        print("Data already present, skipping data loading...")
 
 
 @app.post("/articles", response_model=List[Article])
@@ -199,3 +214,60 @@ async def make_recommendations(
         raise HTTPException(
             status_code=500, detail=f"Error making recommendations: {str(e)}"
         )
+
+
+@app.post("/insert_study_response", response_model=StudyResponse)
+async def insert_user_response(
+    user_study: UserStudy, db: AsyncSession = Depends(get_db)
+):
+    try:
+        user_id = uuid4()
+
+        study_responses = []
+
+        for item in user_study.questionaire:
+            study_response = StudyResponseModel(
+                id=uuid4(),
+                user_id=user_id,
+                question_id=item.question_id,
+                response=item.response.value,
+                timestamp=datetime.now(),
+            )
+            study_responses.append(study_response)
+
+        db.add_all(study_responses)
+
+        await db.commit()
+
+        return {"id": user_id}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not add response: {str(e)}")
+
+
+@app.get("/all_study_responses", response_model=List[UserStudyResponse])
+async def get_all_responses(db: AsyncSession = Depends(get_db)):
+    query = text("""
+                 select * from study_response
+                 order by timestamp desc
+                 """)
+
+    result = await db.execute(query)
+
+    res = result.fetchall()
+
+    if not res:
+        return []
+
+    study_responses = [
+        UserStudyResponse(
+            id=row.id,
+            user_id=row.user_id,
+            question_id=row.question_id,
+            response=row.response,
+            timestamp=str(row.timestamp),
+        )
+        for row in res
+    ]
+
+    return study_responses
