@@ -3,8 +3,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.enums import QuestionaireResponse
-
 
 class Categories(BaseModel):
     sports: List[str]
@@ -31,7 +29,7 @@ class UserLikes(BaseModel):
 
 class Question(BaseModel):
     question_id: str
-    response: QuestionaireResponse
+    response: str
 
 
 class UserStudy(BaseModel):

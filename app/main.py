@@ -230,7 +230,7 @@ async def insert_user_response(
                 id=uuid4(),
                 user_id=user_id,
                 question_id=item.question_id,
-                response=item.response.value,
+                response=item.response,
                 timestamp=datetime.now(),
             )
             study_responses.append(study_response)
