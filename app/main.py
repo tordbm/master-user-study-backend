@@ -10,11 +10,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from app.database import engine
 from app.enums import Recommenders
-from app.models import Base, NewsArticles, StudyResponseModel
+from app.models import Base, StudyResponseModel
 from app.schemas import (
     Article,
     Categories,
@@ -125,14 +124,42 @@ async def on_startup():
 
 @app.post("/articles", response_model=List[Article])
 async def fetch_sports_articles(
-    categories: Categories, db: AsyncSession = Depends(get_db)
+    categories: Categories,
+    shown_articles: List[str] = [],
+    db: AsyncSession = Depends(get_db),
 ):
     try:
-        query = select(NewsArticles).filter(
-            NewsArticles.general_category.in_(categories.sports)
+        placeholders = ", ".join(
+            [f":category{i}" for i in range(1, len(categories.sports) + 1)]
         )
-        result = await db.execute(query)
-        articles = result.scalars().all()
+        query = text(
+            f"""
+            select
+            news_id,
+            title,
+            general_category,
+            abstract
+            from news_articles
+            where (
+                general_category in ({placeholders}) and
+                news_id != all(:articles_shown)
+                )
+            """
+        )
+
+        sports = {
+            f"category{i + 1}": categories.sports[i]
+            for i in range(len(categories.sports))
+        }
+
+        result = await db.execute(
+            query,
+            {
+                **sports,
+                "articles_shown": tuple(shown_articles),
+            },
+        )
+        articles = result.fetchall()
 
         if not articles:
             raise HTTPException(
@@ -144,18 +171,28 @@ async def fetch_sports_articles(
                 status_code=404, detail="Not enough articles in dataset"
             )
 
+        articles_dict = [
+            {
+                "news_id": article[0],
+                "title": article[1],
+                "general_category": article[2],
+                "abstract": article[3],
+            }
+            for article in articles
+        ]
+
         sampled_articles = []
         for category in categories.sports:
             category_articles = [
-                article for article in articles if article.general_category == category
+                article
+                for article in articles_dict
+                if article["general_category"] == category
             ]
             sampled_articles.extend(
                 random.sample(category_articles, min(3, len(category_articles)))
             )
 
-        shuffled_articles = [
-            Article(**article.__dict__) for article in sampled_articles
-        ]
+        shuffled_articles = [Article(**article) for article in sampled_articles]
         random.shuffle(shuffled_articles)
 
         return shuffled_articles
