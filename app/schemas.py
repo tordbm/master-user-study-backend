@@ -30,6 +30,8 @@ class UserLikes(BaseModel):
 class Question(BaseModel):
     question_id: str
     response: str
+    recommender1: str
+    recommender2: str
 
 
 class UserStudy(BaseModel):
@@ -46,6 +48,8 @@ class UserStudyResponse(BaseModel):
     question_id: str
     response: str
     timestamp: str
+    recommender1: str
+    recommender2: str
 
     class Config:
         orm_mode = True

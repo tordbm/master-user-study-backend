@@ -12,6 +12,8 @@ class StudyResponseModel(Base):
     question_id = Column(String, index=True, nullable=False)
     response = Column(String, index=True, nullable=False)
     timestamp = Column(TIMESTAMP, nullable=False)
+    recommender1 = Column(String, index=True, nullable=True)
+    recommender2 = Column(String, index=True, nullable=True)
 
 
 class NewsArticles(Base):

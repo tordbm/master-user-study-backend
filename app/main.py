@@ -269,6 +269,8 @@ async def insert_user_response(
                 question_id=item.question_id,
                 response=item.response,
                 timestamp=datetime.now(),
+                recommender1=item.recommender1,
+                recommender2=item.recommender2,
             )
             study_responses.append(study_response)
 
@@ -303,6 +305,8 @@ async def get_all_responses(db: AsyncSession = Depends(get_db)):
             question_id=row.question_id,
             response=row.response,
             timestamp=str(row.timestamp),
+            recommender1=row.recommender1,
+            recommender2=row.recommender2,
         )
         for row in res
     ]
