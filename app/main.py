@@ -95,11 +95,6 @@ async def on_startup():
                 bind=sync_conn, checkfirst=True
             )
         )
-        await conn.run_sync(
-            lambda sync_conn: Base.metadata.tables["news_articles"].drop(
-                bind=sync_conn, checkfirst=True
-            )
-        )
         await conn.execute(text("create extension if not exists vector;"))
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
