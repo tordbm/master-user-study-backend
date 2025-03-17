@@ -28,7 +28,7 @@ class UserLikes(BaseModel):
 
 
 class Question(BaseModel):
-    question_id: str
+    question_id: int
     response: str
     recommender1: str
     recommender2: str
@@ -45,11 +45,11 @@ class StudyResponse(BaseModel):
 class UserStudyResponse(BaseModel):
     id: UUID
     user_id: UUID
-    question_id: str
+    question_id: int
     response: str
     timestamp: str
     recommender1: str
     recommender2: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True

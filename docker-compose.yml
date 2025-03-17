@@ -1,6 +1,6 @@
 services:
   db:
-      image: ankane/pgvector
+      image: ankane/pgvector:pg16
       container_name: postgres_db
       restart: always
       environment:

@@ -1,5 +1,5 @@
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import TIMESTAMP, UUID, Column, String
+from sqlalchemy import TIMESTAMP, UUID, Column, Integer, String
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -9,7 +9,7 @@ class StudyResponseModel(Base):
     __tablename__ = "study_response"
     id = Column(UUID, primary_key=True, index=True)
     user_id = Column(UUID, index=True, nullable=False)
-    question_id = Column(String, index=True, nullable=False)
+    question_id = Column(Integer, index=True, nullable=False)
     response = Column(String, index=True, nullable=False)
     timestamp = Column(TIMESTAMP, nullable=False)
     recommender1 = Column(String, index=True, nullable=True)
