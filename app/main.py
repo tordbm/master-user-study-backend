@@ -1,5 +1,6 @@
 import json
 import random
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List
 from uuid import uuid4
@@ -26,7 +27,46 @@ from app.schemas import (
 
 from .database import get_db
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app):
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.tables["study_response"].drop(
+                bind=sync_conn, checkfirst=True
+            )
+        )
+
+        await conn.execute(text("create extension if not exists vector;"))
+        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                "create index if not exists tf_idf_hnsw_idx on news_articles using hnsw (tf_idf vector_cosine_ops);"
+            )
+        )
+        await conn.execute(
+            text(
+                "create index if not exists s_bert_hnsw_idx on news_articles using hnsw (s_bert vector_cosine_ops);"
+            )
+        )
+        await conn.execute(
+            text(
+                "create index if not exists open_ai_hnsw_idx on news_articles using hnsw (open_ai vector_cosine_ops);"
+            )
+        )
+        result = await conn.execute(text("select exists (select 1 from news_articles)"))
+        has_entries = result.scalar()
+
+    await load_questions()
+    if not has_entries:
+        await load_csv_to_db()
+    else:
+        print("Data already present, skipping data loading...")
+
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 origins = [
     "https://master-user-study.vercel.app",
@@ -59,6 +99,19 @@ async def load_csv_to_db():
     del df
 
 
+async def load_questions():
+    questions = []
+
+    with open("./data/questionaire.txt", "r") as file:
+        for index, value in enumerate(file.readlines()):
+            questions.append({"question_id": index + 1, "question": value.strip()})
+    async with engine.begin() as conn:
+        sql = text(
+            "insert into questions (question_id, question) values (:question_id, :question)"
+        )
+        await conn.execute(sql, questions)
+
+
 async def compute_user_profile(
     news_ids: List[str], embedding_model: Recommenders, db: AsyncSession
 ):
@@ -85,41 +138,6 @@ async def compute_user_profile(
 
     user_profile = np.mean(embeddings_numpy, axis=0)
     return vector_to_string(user_profile)
-
-
-@app.on_event("startup")
-async def on_startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: Base.metadata.tables["study_response"].drop(
-                bind=sync_conn, checkfirst=True
-            )
-        )
-        await conn.execute(text("create extension if not exists vector;"))
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(
-            text(
-                "create index if not exists tf_idf_hnsw_idx on news_articles using hnsw (tf_idf vector_cosine_ops);"
-            )
-        )
-        await conn.execute(
-            text(
-                "create index if not exists s_bert_hnsw_idx on news_articles using hnsw (s_bert vector_cosine_ops);"
-            )
-        )
-
-        await conn.execute(
-            text(
-                "create index if not exists open_ai_hnsw_idx on news_articles using hnsw (open_ai vector_cosine_ops);"
-            )
-        )
-        result = await conn.execute(text("select exists (select 1 from news_articles)"))
-        has_entries = result.scalar()
-
-    if not has_entries:
-        await load_csv_to_db()
-    else:
-        print("Data already present, skipping data loading...")
 
 
 @app.post("/articles", response_model=List[Article])
