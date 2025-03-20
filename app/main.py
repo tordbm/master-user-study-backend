@@ -57,7 +57,7 @@ async def lifespan(app):
         result = await conn.execute(text("select exists (select 1 from news_articles)"))
         has_entries = result.scalar()
 
-    # await load_questions()
+    await load_questions()
     if not has_entries:
         await load_csv_to_db()
     else:
