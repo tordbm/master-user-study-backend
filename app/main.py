@@ -31,11 +31,11 @@ from .database import get_db
 @asynccontextmanager
 async def lifespan(app):
     async with engine.begin() as conn:
-        await conn.run_sync(
+        """ await conn.run_sync(
             lambda sync_conn: Base.metadata.tables["study_response"].drop(
                 bind=sync_conn, checkfirst=True
             )
-        )
+        ) """
 
         await conn.execute(text("create extension if not exists vector;"))
         await conn.run_sync(Base.metadata.create_all)
@@ -57,7 +57,7 @@ async def lifespan(app):
         result = await conn.execute(text("select exists (select 1 from news_articles)"))
         has_entries = result.scalar()
 
-    await load_questions()
+    # await load_questions()
     if not has_entries:
         await load_csv_to_db()
     else:
@@ -330,3 +330,45 @@ async def get_all_responses(db: AsyncSession = Depends(get_db)):
     ]
 
     return study_responses
+
+
+@app.get("/participants")
+async def get_participants(db: AsyncSession = Depends(get_db)):
+    query = text("""
+                 select count(distinct user_id) from study_response
+                 """)
+
+    result = await db.execute(query)
+
+    res = result.scalar()
+
+    return {"participants": res}
+
+
+@app.get("/stats_per_answer")
+async def get_stats_per_answer(db: AsyncSession = Depends(get_db)):
+    query = text("""
+                 SELECT 
+                    q.question_id, 
+                    q.question, 
+                    sr.response, 
+                    COUNT(sr.response) AS answer_count
+                FROM study_response sr
+                JOIN questions q ON q.question_id = sr.question_id
+                WHERE sr.response IN ('open_ai', 's_bert', 'tf_idf', 'list1', 'list2', 'unsure')
+                GROUP BY q.question_id, q.question, sr.response
+                ORDER BY q.question_id, sr.response
+                 """)
+
+    result = await db.execute(query)
+
+    res = result.fetchall()
+
+    stats = {}
+    for row in res:
+        question_id, question, response, answer_count = row
+        if question_id not in stats:
+            stats[question_id] = {"question": question, "responses": {}}
+        stats[question_id]["responses"][response] = answer_count
+
+    return stats
