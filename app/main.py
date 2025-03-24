@@ -31,12 +31,6 @@ from .database import get_db
 @asynccontextmanager
 async def lifespan(app):
     async with engine.begin() as conn:
-        await conn.run_sync(
-            lambda sync_conn: Base.metadata.tables["study_response"].drop(
-                bind=sync_conn, checkfirst=True
-            )
-        )
-
         await conn.execute(text("create extension if not exists vector;"))
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
