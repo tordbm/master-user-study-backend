@@ -378,8 +378,12 @@ async def get_stats_per_model(db: AsyncSession = Depends(get_db)):
                     q.question_id, 
                     q.question, 
                     sr.response, 
-                sr.recommender1 || ' vs ' || sr.recommender2 as recommender_pair, 
-                count(sr.response) as answer_count
+                    case 
+                        when sr.recommender1 < sr.recommender2 
+                        then sr.recommender1 || ' vs ' || sr.recommender2 
+                        else sr.recommender2 || ' vs ' || sr.recommender1 
+                    end AS recommender_pair, 
+                    count(sr.response) as answer_count
                 from study_response sr
                 join questions q on q.question_id = sr.question_id
                 where sr.response in ('open_ai', 's_bert', 'tf_idf', 'list1', 'list2', 'unsure')
