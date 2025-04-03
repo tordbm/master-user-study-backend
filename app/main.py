@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import engine
 from app.enums import Recommenders
+from app.middleware import RetryMiddleware
 from app.models import Base, StudyResponseModel
 from app.schemas import (
     Article,
@@ -74,6 +75,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+app.add_middleware(RetryMiddleware)
 
 
 def vector_to_string(vector) -> str:
@@ -342,16 +345,16 @@ async def get_participants(db: AsyncSession = Depends(get_db)):
 @app.get("/stats_per_answer")
 async def get_stats_per_answer(db: AsyncSession = Depends(get_db)):
     query = text("""
-                 SELECT 
+                 select 
                     q.question_id, 
                     q.question, 
                     sr.response, 
-                    COUNT(sr.response) AS answer_count
-                FROM study_response sr
-                JOIN questions q ON q.question_id = sr.question_id
-                WHERE sr.response IN ('open_ai', 's_bert', 'tf_idf', 'list1', 'list2', 'unsure')
-                GROUP BY q.question_id, q.question, sr.response
-                ORDER BY q.question_id, sr.response
+                    count(sr.response) as answer_count
+                from study_response sr
+                join questions q on q.question_id = sr.question_id
+                where sr.response in ('open_ai', 's_bert', 'tf_idf', 'list1', 'list2', 'unsure')
+                group by q.question_id, q.question, sr.response
+                order by q.question_id, sr.response
                  """)
 
     result = await db.execute(query)
@@ -364,5 +367,39 @@ async def get_stats_per_answer(db: AsyncSession = Depends(get_db)):
         if question_id not in stats:
             stats[question_id] = {"question": question, "responses": {}}
         stats[question_id]["responses"][response] = answer_count
+
+    return stats
+
+
+@app.get("/stats_per_model")
+async def get_stats_per_model(db: AsyncSession = Depends(get_db)):
+    query = text("""
+                 select 
+                    q.question_id, 
+                    q.question, 
+                    sr.response, 
+                sr.recommender1 || ' vs ' || sr.recommender2 as recommender_pair, 
+                count(sr.response) as answer_count
+                from study_response sr
+                join questions q on q.question_id = sr.question_id
+                where sr.response in ('open_ai', 's_bert', 'tf_idf', 'list1', 'list2', 'unsure')
+                group by q.question_id, q.question, sr.response, recommender_pair
+                order by q.question_id, sr.response;
+                 """)
+
+    result = await db.execute(query)
+    res = result.fetchall()
+
+    stats = {}
+    for row in res:
+        question_id, question, response, recommender_pair, answer_count = row
+
+        if question_id not in stats:
+            stats[question_id] = {"question": question, "comparisons": {}}
+
+        if recommender_pair not in stats[question_id]["comparisons"]:
+            stats[question_id]["comparisons"][recommender_pair] = {}
+
+        stats[question_id]["comparisons"][recommender_pair][response] = answer_count
 
     return stats
