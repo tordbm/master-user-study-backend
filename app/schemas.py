@@ -39,7 +39,8 @@ class UserStudy(BaseModel):
 
 
 class StudyResponse(BaseModel):
-    id: UUID
+    id: str
+    redirect_url: str
 
 
 class UserStudyResponse(BaseModel):

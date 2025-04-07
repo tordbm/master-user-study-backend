@@ -16,3 +16,7 @@ DATABASE_URL = (
     if os.getenv("ENVIRONMENT") == "production"
     else os.getenv("DATABASE_URL")
 )
+
+PROLIFIC_CODE = os.getenv("PROLIFIC_CODE")
+
+REDIRECT_URL = os.getenv("REDIRECT_URL")

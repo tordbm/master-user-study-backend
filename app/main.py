@@ -12,9 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import PROLIFIC_CODE, REDIRECT_URL
 from app.database import engine
 from app.enums import Recommenders
-from app.middleware import RetryMiddleware
 from app.models import Base, StudyResponseModel
 from app.schemas import (
     Article,
@@ -75,8 +75,6 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-
-app.add_middleware(RetryMiddleware)
 
 
 def vector_to_string(vector) -> str:
@@ -293,7 +291,7 @@ async def insert_user_response(
 
         await db.commit()
 
-        return {"id": user_id}
+        return {"id": PROLIFIC_CODE, "redirect_url": REDIRECT_URL}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not add response: {str(e)}")
