@@ -405,3 +405,46 @@ async def get_stats_per_model(db: AsyncSession = Depends(get_db)):
         stats[question_id]["comparisons"][recommender_pair][response] = answer_count
 
     return stats
+
+
+@app.get("/stats_attention_check")
+async def stats_attention_check(db: AsyncSession = Depends(get_db)):
+    query = text("""
+        select 
+            q.question_id, 
+            q.question, 
+            sr.response, 
+            case 
+                when sr.recommender1 < sr.recommender2 
+                then sr.recommender1 || ' vs ' || sr.recommender2 
+                else sr.recommender2 || ' vs ' || sr.recommender1 
+            end AS recommender_pair, 
+            count(sr.response) as answer_count
+        from study_response sr
+        join questions q on q.question_id = sr.question_id
+        where sr.user_id in (
+            select user_id
+            from study_response
+            where question_id = 15 and response = 'list1'
+        )
+        and sr.response in ('open_ai', 's_bert', 'tf_idf', 'list1', 'list2', 'unsure')
+        group by q.question_id, q.question, sr.response, recommender_pair
+        order by q.question_id, sr.response;
+    """)
+
+    result = await db.execute(query)
+    res = result.fetchall()
+
+    stats = {}
+    for row in res:
+        question_id, question, response, recommender_pair, answer_count = row
+
+        if question_id not in stats:
+            stats[question_id] = {"question": question, "comparisons": {}}
+
+        if recommender_pair not in stats[question_id]["comparisons"]:
+            stats[question_id]["comparisons"][recommender_pair] = {}
+
+        stats[question_id]["comparisons"][recommender_pair][response] = answer_count
+
+    return stats
